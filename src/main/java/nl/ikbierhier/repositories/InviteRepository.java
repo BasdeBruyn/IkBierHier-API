@@ -1,0 +1,11 @@
+package nl.ikbierhier.repositories;
+
+import nl.ikbierhier.models.Invite;
+import org.springframework.data.repository.CrudRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.UUID;
+
+@Repository
+public interface InviteRepository extends CrudRepository<Invite, UUID> {
+}

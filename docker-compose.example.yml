@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  api:
+    build: .
+    image: ikbierhier-spring-local
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: spring_ci_local
+    volumes:
+      - spring_ci_local:/var/lib/postgresql/data
+  web:
+    image: dannyvantol/ikbierhier-react:development
+    ports:
+      - '80:80'
+
+volumes:
+  spring_ci_local:

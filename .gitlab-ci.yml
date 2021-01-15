@@ -1,0 +1,149 @@
+image: maven:3.6.3-jdk-8
+
+stages:
+  - test
+  - verify
+  - report
+  - visualize
+  - build
+  - deploy
+  - inform
+
+#run-tests:
+#  stage: test
+#  script:
+#    - mvn clean install
+#    - mvn test -DskipTests=false
+#    - rm target/*.jar
+#  artifacts:
+#    paths:
+#      - target/
+#    reports:
+#      junit:
+#        - target/surefire-reports/TEST-*.xml
+#
+#verify-test-coverage:
+#  stage: verify
+#  script:
+#    - mvn jacoco:check@jacoco-check
+#  needs: [ "run-tests" ]
+#  dependencies:
+#    - run-tests
+#
+#verify-code-quality:
+#  stage: verify
+#  script:
+#    - mvn pmd:check -Dpmd.skip=false
+#    - mvn pmd:cpd-check -Dcpd.skip=false
+#  needs: [ "run-tests" ]
+#  dependencies:
+#    - run-tests
+#
+#generate-report-site:
+#  stage: report
+#  script:
+#    - mvn site:site -Dcpd.skip=false -Dpmd.skip=false
+#  needs: [ "run-tests" ]
+#  dependencies:
+#    - run-tests
+#  artifacts:
+#    paths:
+#      - target/site
+#
+#display-test-coverage:
+#  stage: visualize
+#  image: haynes/jacoco2cobertura:1.0.3
+#  script:
+#    - python /opt/cover2cover.py target/site/jacoco/jacoco.xml src/main/java > target/site/coverage.xml
+#    - python /opt/source2filename.py target/site/coverage.xml
+#    - cat target/site/jacoco/index.html
+#  needs: [ "generate-report-site" ]
+#  dependencies:
+#    - generate-report-site
+#  artifacts:
+#    paths:
+#      - target/site/coverage.xml
+#    reports:
+#      cobertura: target/site/coverage.xml
+#
+#deploy-report-site:
+#  stage: deploy
+#  image: ubuntu:20.04
+#  before_script:
+#    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+#    - eval $(ssh-agent -s)
+#    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+#    - mkdir -p ~/.ssh
+#    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+#  script:
+#    - mv target/site/ reports/
+#    - ssh ci_user@$CI_SERVER_HOST "rm -rf /var/www/html/$CI_PROJECT_NAME/$CI_COMMIT_BRANCH/"
+#    - ssh ci_user@$CI_SERVER_HOST "mkdir -p /var/www/html/$CI_PROJECT_NAME/$CI_COMMIT_BRANCH/"
+#    - scp -r reports/ ci_user@$SERVER_IP:/var/www/html/$CI_PROJECT_NAME/$CI_COMMIT_BRANCH
+#  needs: ["generate-report-site"]
+#  dependencies:
+#    - generate-report-site
+#  environment:
+#    name: reports
+#    url: http://145.97.16.153:7113/$CI_PROJECT_NAME
+#  artifacts:
+#    paths:
+#      - reports
+#    expire_in: 2 days
+
+build-docker-image:
+  stage: build
+  image: docker:stable
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_TOKEN $CI_REGISTRY
+  script:
+    - mv $APPLICATION_PROPERTIES src/main/resources/application.properties
+    - docker build -t $CI_REGISTRY_IMAGE .
+    - docker tag $CI_REGISTRY_IMAGE $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+    - docker push $CI_REGISTRY_IMAGE
+#  needs:
+#    - verify-code-quality
+#    - verify-test-coverage
+  only:
+    - master
+    - development
+
+deploy-master:
+  stage: deploy
+  image: docker:stable
+  script:
+    - mv $APPLICATION_PROPERTIES src/main/resources/application.properties
+    - docker service update --image $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG $SWARM_SERVICE_NAME_MASTER
+  needs: ["build-docker-image"]
+  dependencies:
+    - build-docker-image
+  environment:
+    name: production
+    url: http://145.97.16.153:8000
+  only:
+    - master
+
+deploy-development:
+  stage: deploy
+  image: docker:stable
+  script:
+    - mv $APPLICATION_PROPERTIES src/main/resources/application.properties
+    - docker service update --image $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG $SWARM_SERVICE_NAME_DEVELOPMENT
+  needs: ["build-docker-image"]
+  dependencies:
+    - build-docker-image
+  environment:
+    name: staging
+    url: http://145.97.16.153:8001
+  only:
+    - development
+
+#comment-report-sites:
+#  stage: inform
+#  image: python:3.8
+#  script:
+#    - pip install requests
+#    - python CI/add_report_comment.py
+#  needs: ["deploy-report-site"]
+#  dependencies:
+#    - deploy-report-site

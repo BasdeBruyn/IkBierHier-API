@@ -1,0 +1,6 @@
+**/.idea/
+/target/
+*.iml
+/database/
+/src/main/resources/application.properties
+docker-compose.yml
